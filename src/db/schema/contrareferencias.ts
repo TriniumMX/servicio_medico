@@ -1,89 +1,72 @@
-// src/db/schema/contrareferencias.ts
-import { pgTable, bigserial, bigint, varchar, text, timestamp, boolean, pgEnum, smallint } from 'drizzle-orm/pg-core';
+import {
+  pgTable, bigserial, bigint, uuid, varchar, text,
+  timestamp, boolean, smallint, pgEnum, foreignKey,
+} from 'drizzle-orm/pg-core';
+import { organizaciones } from './organizaciones';
 import { referenciasEspecialidad } from './referencias';
 import { consulta } from './consulta';
+import { pacientes } from './pacientes';
+import { usuarios } from './usuarios';
 
-// =============================================
-// ENUM para estatus de contrareferencia
-// =============================================
-export const estatusContrarreferencia = pgEnum('estatus_contrareferencia_enum', [
+export const estatusContraReferenciaEnum = pgEnum('estatus_contrareferencia', [
   'pendiente',
   'vista',
-  'cerrada'
+  'cerrada',
 ]);
 
-// =============================================
-// Tabla: contrareferencias
-// =============================================
 export const contrareferencias = pgTable('contrareferencias', {
-  // ID principal
   idContrareferencia: bigserial('id_contrareferencia', { mode: 'number' }).primaryKey(),
+  tenantId:           uuid('tenant_id').notNull().references(() => organizaciones.id),
+  folio:              varchar('folio', { length: 20 }).notNull().unique(),
 
-  // Folio único (ej: CREF-A7K9M)
-  folio: varchar('folio', { length: 20 }).unique().notNull(),
-
-  // Relación con referencia original
-  idReferenciaOrigen: bigint('id_referencia_origen', { mode: 'number' })
-    .notNull()
-    .references(() => referenciasEspecialidad.idReferencia, { onDelete: 'restrict' }),
-
-  // Relación con consulta donde el especialista atendió
+  // Origen
+  idReferenciaOrigen:     bigint('id_referencia_origen', { mode: 'number' })
+                            .notNull()
+                            .references(() => referenciasEspecialidad.idReferencia, { onDelete: 'restrict' }),
   idConsultaEspecialista: bigint('id_consulta_especialista', { mode: 'number' })
-    .notNull()
-    .references(() => consulta.idConsulta, { onDelete: 'restrict' }),
+                            .notNull()
+                            .references(() => consulta.idConsulta, { onDelete: 'restrict' }),
 
-  // Médico que contrarrefiere (especialista que atendió)
-  idMedicoContrarrefiere: bigint('id_medico_contrarrefiere', { mode: 'number' }).notNull(),
-  nombreMedicoContrarrefiere: varchar('nombre_medico_contrarrefiere', { length: 200 }).notNull(),
-  idEspecialidadRemitente: bigint('id_especialidad_remitente', { mode: 'number' }).notNull(),
-  nombreEspecialidadRemitente: varchar('nombre_especialidad_remitente', { length: 100 }).notNull(),
-
-  // Médico que recibe la contrareferencia (el que refirió originalmente)
-  idMedicoDestino: bigint('id_medico_destino', { mode: 'number' }).notNull(),
-  nombreMedicoDestino: varchar('nombre_medico_destino', { length: 200 }).notNull(),
-
-  // Información del paciente (snapshot)
-  noNomina: varchar('no_nomina', { length: 10 }).notNull(),
-  idBeneficiario: bigint('id_beneficiario', { mode: 'number' }).notNull(),
+  // Paciente (snapshot)
+  idPaciente:     uuid('id_paciente').notNull().references(() => pacientes.id),
   nombrePaciente: varchar('nombre_paciente', { length: 200 }).notNull(),
 
-  // Contenido de la contrareferencia (SOAP completo)
+  // Especialista que contrarrefiere
+  idMedicoContrarrefiere:      uuid('id_medico_contrarrefiere').notNull().references(() => usuarios.id),
+  nombreMedicoContrarrefiere:  varchar('nombre_medico_contrarrefiere', { length: 200 }).notNull(),
+  nombreEspecialidadRemitente: varchar('nombre_especialidad_remitente', { length: 100 }).notNull(),
+
+  // Médico destino
+  idMedicoDestino:     uuid('id_medico_destino').notNull().references(() => usuarios.id),
+  nombreMedicoDestino: varchar('nombre_medico_destino', { length: 200 }).notNull(),
+
+  // Nota SOAP del especialista
   subjetivo: text('subjetivo'),
-  objetivo: text('objetivo'),
-  analisis: text('analisis'),
+  objetivo:  text('objetivo'),
+  analisis:  text('analisis'),
   planTexto: text('plan_texto'),
 
-  // Diagnóstico CIE-11
+  // CIE-11
   cie11Codigo: varchar('cie11_codigo', { length: 15 }),
   cie11Titulo: text('cie11_titulo'),
 
-  // Observaciones adicionales del especialista
   observacionesEspecialista: text('observaciones_especialista'),
 
-  // Control de cascada
-  esParteCascada: boolean('es_parte_cascada').default(false),
+  // Control cascada
+  esParteCascada:          boolean('es_parte_cascada').default(false),
   idContrareferenciaPadre: bigint('id_contrareferencia_padre', { mode: 'number' }),
-  nivelCascada: smallint('nivel_cascada').default(1),
+  nivelCascada:            smallint('nivel_cascada').default(1),
 
-  // Control de estatus
-  estatus: estatusContrarreferencia('estatus').notNull().default('pendiente'),
+  estatus:    estatusContraReferenciaEnum('estatus').notNull().default('pendiente'),
   fechaVista: timestamp('fecha_vista', { withTimezone: true }),
-  activo: boolean('activo').default(true),
+  activo:     boolean('activo').default(true),
 
-  // Auditoría
-  creadoEn: timestamp('creado_en', { withTimezone: true }).defaultNow(),
-  actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).defaultNow(),
-});
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  selfRef: foreignKey({ columns: [table.idContrareferenciaPadre], foreignColumns: [table.idContrareferencia] }),
+}));
 
-// =============================================
-// Tipos TypeScript exportados
-// =============================================
-
-// Tipo completo de la tabla
-export type Contrareferencia = typeof contrareferencias.$inferSelect;
-
-// Tipo para insertar (sin campos auto-generados)
-export type NuevaContrareferencia = typeof contrareferencias.$inferInsert;
-
-// Tipo para el estatus
-export type EstatusContrareferencia = typeof estatusContrarreferencia.enumValues[number];
+export type Contrareferencia        = typeof contrareferencias.$inferSelect;
+export type NuevaContrareferencia   = typeof contrareferencias.$inferInsert;
+export type EstatusContrareferencia = typeof estatusContraReferenciaEnum.enumValues[number];

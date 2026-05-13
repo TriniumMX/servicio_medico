@@ -1,31 +1,29 @@
-import { pgTable, serial, integer, text, timestamp, varchar, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, bigserial, bigint, uuid, integer, text, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { organizaciones } from './organizaciones';
 import { inventarioMedicamentos } from './farmacia';
+import { usuarios } from './usuarios';
 
-// =====================================================
-// ENUM: tipo_movimiento_inventario
-// =====================================================
 export const tipoMovimientoInventarioEnum = pgEnum('tipo_movimiento_inventario', [
-    'SURTIMIENTO',    // Entrada de stock (resurtimiento)
-    'AJUSTE',         // Corrección manual
-    'DISPENSACION',   // Salida por receta/uso (futuro)
-    'CADUCIDAD',      // Salida por caducidad (futuro)
-    'TERMINADO'       // Salida por consumo total (futuro)
+  'SURTIMIENTO',
+  'AJUSTE',
+  'DISPENSACION',
+  'CADUCIDAD',
+  'TERMINADO',
 ]);
 
-// =====================================================
-// TABLA: historial_inventario
-// =====================================================
 export const historialInventario = pgTable('historial_inventario', {
-    id_historial: serial('id_historial').primaryKey(),
-    id_inventario: integer('id_inventario').notNull().references(() => inventarioMedicamentos.id_inventario),
-    cantidad_anterior: integer('cantidad_anterior').notNull(),
-    cantidad_ingresada: integer('cantidad_ingresada').notNull(), // Lo que se sumó/restó
-    cantidad_nueva: integer('cantidad_nueva').notNull(),
-    tipo_movimiento: tipoMovimientoInventarioEnum('tipo_movimiento').notNull(),
-    usuario_id: text('usuario_id'), // ID del usuario que hizo el movimiento (opcional por ahora si no hay auth estricta)
-    observaciones: text('observaciones'),
-    fecha: timestamp('fecha', { withTimezone: true }).notNull().defaultNow(),
+  idHistorial:      bigserial('id_historial', { mode: 'number' }).primaryKey(),
+  tenantId:         uuid('tenant_id').notNull().references(() => organizaciones.id),
+  idInventario:     bigint('id_inventario', { mode: 'number' }).notNull().references(() => inventarioMedicamentos.idInventario),
+  cantidadAnterior: integer('cantidad_anterior').notNull(),
+  cantidadIngresada: integer('cantidad_ingresada').notNull(),
+  cantidadNueva:    integer('cantidad_nueva').notNull(),
+  tipoMovimiento:   tipoMovimientoInventarioEnum('tipo_movimiento').notNull(),
+  idUsuario:        uuid('id_usuario').references(() => usuarios.id),
+  observaciones:    text('observaciones'),
+  fecha:            timestamp('fecha', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export type HistorialInventario = typeof historialInventario.$inferSelect;
+export type HistorialInventario      = typeof historialInventario.$inferSelect;
 export type NuevoHistorialInventario = typeof historialInventario.$inferInsert;
+export type TipoMovimientoInventario = typeof tipoMovimientoInventarioEnum.enumValues[number];

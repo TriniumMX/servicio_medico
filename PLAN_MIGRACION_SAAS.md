@@ -101,11 +101,12 @@ Actualmente estas tablas NO tienen `tenant_id`. Todas deben recibirlo:
 
 #### Tareas
 
-- [ ] **1.1** Crear proyecto en Supabase y configurar variables de entorno
+- [x] **1.1** Crear proyecto en Supabase y configurar variables de entorno
   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-  - Actualizar `drizzle.config.ts` para apuntar a Supabase PostgreSQL
+  - `.env.local` creado con todas las variables necesarias
+  - `drizzle.config.ts` actualizado para usar `DATABASE_URL` de Supabase
   
-- [ ] **1.2** Crear tabla `organizaciones` en Supabase
+- [x] **1.2** Crear tabla `organizaciones` en Supabase
   ```sql
   CREATE TABLE organizaciones (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -121,15 +122,15 @@ Actualmente estas tablas NO tienen `tenant_id`. Todas deben recibirlo:
   );
   ```
 
-- [ ] **1.3** Crear tabla `usuarios` en Drizzle schema (actualmente solo existe en SQL raw)
+- [x] **1.3** Crear tabla `usuarios` en Drizzle schema (actualmente solo existe en SQL raw)
   - Campos: `id`, `tenant_id` (FK organizaciones), `email`, `password_hash`, `nombre`, `apellidos`, `role` (enum SaaS), `activo`, timestamps
   - Roles SaaS: `super_admin`, `admin_org`, `medico`, `enfermera`, `farmaceutico`, `especialista`
   
-- [ ] **1.4** Migrar todos los schemas Drizzle para agregar `tenant_id UUID NOT NULL REFERENCES organizaciones(id)`
-  - Archivos a modificar: todos los archivos en `src/db/schema/`
-  - Crear migración Drizzle: `npx drizzle-kit generate`
+- [x] **1.4** Migrar todos los schemas Drizzle para agregar `tenant_id UUID NOT NULL REFERENCES organizaciones(id)`
+  - Todos los archivos en `src/db/schema/` reescritos con tenant_id, UUIDs y nuevos ENUMs
+  - DB ya migrada directamente en Supabase con `SAAS_MIGRATION_V1.sql`
   
-- [ ] **1.5** Crear nueva tabla `pacientes` (reemplaza el modelo nómina)
+- [x] **1.5** Crear nueva tabla `pacientes` (reemplaza el modelo nómina)
   ```typescript
   // src/db/schema/pacientes.ts
   export const pacientes = pgTable('pacientes', {
@@ -149,7 +150,7 @@ Actualmente estas tablas NO tienen `tenant_id`. Todas deben recibirlo:
   });
   ```
 
-- [ ] **1.6** Activar Row Level Security (RLS) en Supabase
+- [x] **1.6** Activar Row Level Security (RLS) en Supabase
   ```sql
   -- Ejemplo para tabla consulta
   ALTER TABLE consulta ENABLE ROW LEVEL SECURITY;
@@ -158,7 +159,7 @@ Actualmente estas tablas NO tienen `tenant_id`. Todas deben recibirlo:
   ```
   - Aplicar el mismo patrón a todas las tablas con `tenant_id`
 
-- [ ] **1.7** Crear función helper para pasar `tenant_id` al contexto de Supabase
+- [x] **1.7** Crear función helper para pasar `tenant_id` al contexto de Supabase
   ```typescript
   // src/lib/supabase-server.ts
   export async function getSupabaseWithTenant(tenantId: string) {

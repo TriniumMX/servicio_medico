@@ -1,37 +1,17 @@
-// src/db/schema/firmas.ts
-import { pgTable, bigserial, bigint, text, varchar, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, bigserial, uuid, text, varchar, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { organizaciones } from './organizaciones';
+import { usuarios } from './usuarios';
 
-// =============================================
-// Tabla: firmas_digitales
-// Almacena las firmas digitales de coordinadores para reutilización
-// =============================================
 export const firmasDigitales = pgTable('firmas_digitales', {
-  // ID principal
-  idFirma: bigserial('id_firma', { mode: 'number' }).primaryKey(),
-
-  // Usuario (coordinador) propietario de la firma
-  idUsuario: bigint('id_usuario', { mode: 'number' }).notNull().unique(),
-
-  // Firma en base64 (imagen PNG)
+  idFirma:     bigserial('id_firma', { mode: 'number' }).primaryKey(),
+  tenantId:    uuid('tenant_id').notNull().references(() => organizaciones.id),
+  idUsuario:   uuid('id_usuario').notNull().unique().references(() => usuarios.id),
   firmaBase64: text('firma_base64').notNull(),
-
-  // Hash SHA-256 de la firma para identificación única
-  hashFirma: varchar('hash_firma', { length: 64 }).notNull().unique(),
-
-  // Control
-  activo: boolean('activo').default(true),
-
-  // Auditoría
-  creadoEn: timestamp('creado_en', { withTimezone: true }).defaultNow(),
-  actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).defaultNow(),
+  hashFirma:   varchar('hash_firma', { length: 64 }).notNull().unique(),
+  activo:      boolean('activo').default(true),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// =============================================
-// Tipos TypeScript exportados
-// =============================================
-
-// Tipo completo de la tabla
-export type FirmaDigital = typeof firmasDigitales.$inferSelect;
-
-// Tipo para insertar (sin campos auto-generados)
+export type FirmaDigital      = typeof firmasDigitales.$inferSelect;
 export type NuevaFirmaDigital = typeof firmasDigitales.$inferInsert;

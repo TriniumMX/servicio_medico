@@ -1,95 +1,73 @@
-// src/db/schema/referencias.ts
-import { pgTable, bigserial, bigint, varchar, text, timestamp, boolean, pgEnum } from 'drizzle-orm/pg-core';
+import {
+  pgTable, bigserial, bigint, uuid, varchar, text, timestamp, boolean, pgEnum,
+} from 'drizzle-orm/pg-core';
+import { organizaciones } from './organizaciones';
 import { consulta } from './consulta';
+import { pacientes } from './pacientes';
+import { usuarios } from './usuarios';
 
-// =============================================
-// ENUM para estatus de referencia
-// =============================================
-export const estatusReferenciaEnum = pgEnum('estatus_referencia_enum', [
-  'pendiente_autorizar',
-  'pendiente_asignar', // Legacy: datos existentes antes de la inversión del flujo
-  'autorizada',
-  'asignada',
-  'notificada',
+// Flujo simplificado SaaS: pendiente → programada → atendida (+ cancelada | inasistencia)
+export const estatusReferenciaEnum = pgEnum('estatus_referencia', [
+  'pendiente',
+  'programada',
   'atendida',
   'cancelada',
-  'inasistencia'
+  'inasistencia',
 ]);
 
-// =============================================
-// Tabla: referencias_especialidad
-// =============================================
+export const tipoReferenciaEnum = pgEnum('tipo_referencia', [
+  'interna',   // Dentro del mismo tenant
+  'externa',   // A hospital/clínica externa
+]);
+
 export const referenciasEspecialidad = pgTable('referencias_especialidad', {
-  // ID principal
   idReferencia: bigserial('id_referencia', { mode: 'number' }).primaryKey(),
+  tenantId:     uuid('tenant_id').notNull().references(() => organizaciones.id),
+  folio:        varchar('folio', { length: 20 }).unique(),
+  tipo:         tipoReferenciaEnum('tipo').notNull().default('interna'),
 
-  // Folio único de referencia (ej: REF-A7K9M)
-  folio: varchar('folio', { length: 20 }).unique(),
-
-  // Relación con consultas
-  idConsultaOrigen: bigint('id_consulta_origen', { mode: 'number' })
-    .notNull()
-    .references(() => consulta.idConsulta, { onDelete: 'restrict' }),
+  // Consultas vinculadas
+  idConsultaOrigen:      bigint('id_consulta_origen', { mode: 'number' })
+                           .notNull()
+                           .references(() => consulta.idConsulta, { onDelete: 'restrict' }),
   idConsultaSeguimiento: bigint('id_consulta_seguimiento', { mode: 'number' })
-    .references(() => consulta.idConsulta, { onDelete: 'set null' }),
+                           .references(() => consulta.idConsulta, { onDelete: 'set null' }),
 
-  // Información del paciente (snapshot)
-  noNomina: varchar('no_nomina', { length: 10 }).notNull(),
-  idBeneficiario: bigint('id_beneficiario', { mode: 'number' }).notNull(),
+  // Paciente (snapshot)
+  idPaciente:     uuid('id_paciente').notNull().references(() => pacientes.id),
   nombrePaciente: varchar('nombre_paciente', { length: 200 }).notNull(),
 
   // Médico que refiere
-  idMedicoRefiere: bigint('id_medico_refiere', { mode: 'number' }).notNull(),
+  idMedicoRefiere:     uuid('id_medico_refiere').notNull().references(() => usuarios.id),
   nombreMedicoRefiere: varchar('nombre_medico_refiere', { length: 200 }).notNull(),
 
   // Especialidad solicitada
-  idEspecialidadSolicitada: bigint('id_especialidad_solicitada', { mode: 'number' }).notNull(),
   nombreEspecialidad: varchar('nombre_especialidad', { length: 100 }).notNull(),
-  motivoReferencia: text('motivo_referencia').notNull(),
+  motivoReferencia:   text('motivo_referencia').notNull(),
 
-  // Autorización (FASE 2: Coordinador)
-  idCoordinadorAutoriza: bigint('id_coordinador_autoriza', { mode: 'number' }),
-  fechaAutorizacion: timestamp('fecha_autorizacion', { withTimezone: true }),
-  observacionesCoordinador: text('observaciones_coordinador'),
-  firmaDigital: text('firma_digital'),
+  // Asignación de especialista
+  idMedicoAsignado:     uuid('id_medico_asignado').references(() => usuarios.id),
+  nombreMedicoAsignado: varchar('nombre_medico_asignado', { length: 200 }),
+  fechaCita:            timestamp('fecha_cita', { withTimezone: true }),
+  idUsuarioPrograma:    uuid('id_usuario_programa').references(() => usuarios.id),
+  fechaProgramacion:    timestamp('fecha_programacion', { withTimezone: true }),
 
-  // Asignación de médico especialista (FASE 3: Hospital)
-  idMedicoAsignado: bigint('id_medico_asignado', { mode: 'number' }),
-  fechaCita: timestamp('fecha_cita', { withTimezone: true }),
-  idUsuarioAsigna: bigint('id_usuario_asigna', { mode: 'number' }),
-  fechaAsignacion: timestamp('fecha_asignacion', { withTimezone: true }),
-
-  // Notificación al paciente (FASE 4: Admin Referencias)
-  idUsuarioNotifica: bigint('id_usuario_notifica', { mode: 'number' }),
-  fechaNotificacion: timestamp('fecha_notificacion', { withTimezone: true }),
-  observacionesNotificacion: text('observaciones_notificacion'),
-
-  // Atención (FASE 5: Médico Especialista)
+  // Atención
   fechaAtencion: timestamp('fecha_atencion', { withTimezone: true }),
 
-  // Inasistencia (FASE 5b: Médico Especialista marca inasistencia)
+  // Cancelación / Inasistencia
+  motivoCancelacion:  text('motivo_cancelacion'),
   motivoInasistencia: text('motivo_inasistencia'),
-  idUsuarioInasistencia: bigint('id_usuario_inasistencia', { mode: 'number' }),
-  fechaInasistencia: timestamp('fecha_inasistencia', { withTimezone: true }),
+  idUsuarioCierre:    uuid('id_usuario_cierre').references(() => usuarios.id),
 
-  // Control de estatus
-  estatus: estatusReferenciaEnum('estatus').notNull().default('pendiente_autorizar'),
-  activo: boolean('activo').default(true),
+  estatus: estatusReferenciaEnum('estatus').notNull().default('pendiente'),
+  activo:  boolean('activo').default(true),
 
-  // Auditoría
-  creadoEn: timestamp('creado_en', { withTimezone: true }).defaultNow(),
-  actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// =============================================
-// Tipos TypeScript exportados
-// =============================================
-
-// Tipo completo de la tabla
-export type ReferenciaEspecialidad = typeof referenciasEspecialidad.$inferSelect;
-
-// Tipo para insertar (sin campos auto-generados)
+export type ReferenciaEspecialidad      = typeof referenciasEspecialidad.$inferSelect;
 export type NuevaReferenciaEspecialidad = typeof referenciasEspecialidad.$inferInsert;
-
-// Tipo para el estatus
-export type EstatusReferencia = typeof estatusReferenciaEnum.enumValues[number];
+export type EstatusReferencia           = typeof estatusReferenciaEnum.enumValues[number];
+export type TipoReferencia              = typeof tipoReferenciaEnum.enumValues[number];

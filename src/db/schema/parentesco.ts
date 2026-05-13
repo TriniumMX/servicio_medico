@@ -1,10 +1,4 @@
-// src/db/schema/parentesco.ts
-import { pgTable, bigserial, varchar, boolean, timestamp } from 'drizzle-orm/pg-core';
-
-export const parentesco = pgTable('parentesco', {
-  idParentesco: bigserial('id_parentesco', { mode: 'number' }).primaryKey(),
-  parentesco: varchar('parentesco', { length: 100 }).notNull(),
-  estatus: boolean('estatus').notNull().default(true),
-  creadoEn: timestamp('creado_en', { withTimezone: true }).defaultNow(),
-  actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).defaultNow(),
-});
+// Concepto eliminado en SaaS v1.
+// Los pacientes ya no se identifican por nómina/parentesco sino por UUID propio.
+// Este archivo se mantiene vacío para no romper imports que aún no se han migrado.
+export {};
