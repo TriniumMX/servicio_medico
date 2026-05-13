@@ -965,6 +965,205 @@ Puntos a resolver con área legal/compliance antes de publicar la app:
 
 ---
 
+### FASE 10.5 — Suscripciones, Pagos y Calculadora de Costos (TRI-73 a TRI-79)
+
+**Linear:** 7 tickets · Prioridad Urgent
+**Estimado:** 5-6 días hábiles
+**Dependencias:** Fase 10 (Super Admin crea orgs y asigna planes)
+
+> **Contexto:** El modelo de negocio SaaS requiere controlar qué módulos tiene activos cada organización, gestionar períodos de prueba, registrar pagos y permitir personalizaciones por cliente. No todos los clientes son iguales: un doctor privado no necesita farmacia, un laboratorio no necesita referencias, un hospital puede querer todo.
+
+#### DB ya aplicada (migración `saas_v2_subscripciones` — 2026-05-12)
+
+Tablas creadas en Supabase:
+
+| Tabla | Descripción |
+|-------|-------------|
+| `modulos` | Catálogo de módulos disponibles con precio individual |
+| `planes` | Planes base (Doctor, Clínica, Hospital, Laboratorio, Enterprise) |
+| `planes_modulos` | M2M: qué módulos incluye cada plan por defecto |
+| `subscripciones` | Una por organización. Estados: `trial → activa → vencida / suspendida / cancelada` |
+| `subscripciones_modulos` | Personalizaciones por org: habilitar/deshabilitar módulos fuera del plan |
+| `pagos` | Historial de pagos. Métodos: transferencia, tarjeta, Stripe (futuro), efectivo |
+
+Drizzle schemas: `src/db/schema/subscripciones.ts` exporta todo via `src/db/schema/index.ts`.
+
+#### Planes y módulos disponibles
+
+| Plan | Precio Mensual | Precio Anual | Módulos incluidos |
+|------|---------------|-------------|-------------------|
+| **Doctor Privado** | $799 MXN | $7,990 MXN | Consultas + Certificados |
+| **Clínica** | $1,499 MXN | $14,990 MXN | Consultas + Farmacia + Laboratorio + Referencias + Certificados + Analytics |
+| **Hospital** | $2,999 MXN | $29,990 MXN | Todos los módulos, usuarios y pacientes ilimitados |
+| **Laboratorio** | $999 MXN | $9,990 MXN | Laboratorio + Consultas |
+| **Enterprise** | Negociado | Negociado | Personalizado, SLA, soporte prioritario |
+
+> **Nota sobre el catálogo de medicamentos:** `medicamentos` es una tabla global sin `tenant_id`. Cualquier organización puede consultar el catálogo de medicamentos (para búsquedas al prescribir) sin necesitar el módulo de Farmacia. El módulo Farmacia habilita el inventario propio del tenant (`inventario_medicamentos`), las recetas electrónicas y el resurtimiento.
+
+#### Estados de la suscripción
+
+```
+trial (7 días) ──► activa ──► vencida ──► suspendida
+                     │                        │
+                     └──────────────────► cancelada
+```
+
+- **trial:** 7 días desde la creación de la org. Acceso completo al plan asignado.
+- **activa:** Pago registrado. `periodo_fin` marca cuándo vence el ciclo.
+- **vencida:** `periodo_fin` pasó sin nuevo pago. Se muestra banner de advertencia, funcionalidad limitada.
+- **suspendida:** Sin pago por más de X días. Solo lectura (no puede crear consultas, recetas, etc.).
+- **cancelada:** Baja definitiva. Los datos se retienen 90 días para cumplir LFPDPPP.
+
+#### Personalizaciones por organización
+
+Un doctor puede querer el módulo de Laboratorio aunque esté en plan Doctor:
+
+```typescript
+// subscripciones_modulos: habilitado = true, precio_adicional = 249 MXN/mes
+// Precio total = precio_plan_base + SUM(precio_adicional de extras)
+```
+
+Un hospital puede querer deshabilitar el Portal del Paciente aunque el plan lo incluya:
+
+```typescript
+// subscripciones_modulos: habilitado = false, precio_adicional = 0
+```
+
+#### Tareas
+
+- [ ] **10.5.1 — TRI-73** Crear `subscripciones.service.ts`
+  ```typescript
+  // src/services/subscripciones.service.ts
+  
+  // Crea suscripción trial al dar de alta una organización:
+  export async function crearTrialSubscripcion(tenantId: string, planClave: string): Promise<Subscripcion>
+  // → estatus: 'trial', trial_inicia_at: NOW(), trial_termina_at: NOW() + 7 days
+  
+  // Registra un pago y activa/renueva la suscripción:
+  export async function registrarPago(subscripcionId: string, datos: NuevoPago): Promise<Pago>
+  // → actualiza subscripciones.estatus = 'activa', periodo_inicio/fin
+  
+  // Verifica si un módulo está activo para un tenant:
+  export async function moduloActivo(tenantId: string, moduloClave: string): Promise<boolean>
+  // → lee plan base + personalizaciones en subscripciones_modulos
+  
+  // Cambia el plan de una organización:
+  export async function cambiarPlan(tenantId: string, nuevoPlanId: string): Promise<void>
+  
+  // Obtiene la suscripción activa con sus módulos resueltos:
+  export async function getSubscripcionConModulos(tenantId: string): Promise<SubscripcionDetalle>
+  ```
+
+- [ ] **10.5.2 — TRI-74** Integrar verificación de suscripción en el middleware
+  ```typescript
+  // src/middleware.ts — agregar después de validar el JWT:
+  // 1. Si el usuario es super_admin → siempre pasar
+  // 2. Si estatus === 'suspendida' → solo permitir /dashboard/subscripcion y /api/auth/*
+  // 3. Si estatus === 'vencida'    → mostrar banner, permitir navegación en modo lectura
+  // 4. Si estatus === 'trial'      → pasar, pero calcular días restantes y pasarlos en header
+  
+  // Optimización: cachear estado de suscripción en Vercel KV por 5 min
+  // Key: `sub:status:{tenant_id}` → { estatus, trial_termina_at, modulos_activos[] }
+  ```
+
+- [ ] **10.5.3 — TRI-75** Panel Super Admin — Gestión de suscripciones
+  ```
+  GET  /api/trinium/subscripciones           → listado con estatus, plan, días de trial restantes
+  PUT  /api/trinium/subscripciones/[id]      → cambiar plan, suspender, reactivar, cancelar
+  POST /api/trinium/subscripciones/[id]/pago → registrar pago manual
+  GET  /api/trinium/pagos                    → historial completo de todos los pagos
+  ```
+  
+  Vista en `/trinium-admin/subscripciones`:
+  - Tabla con organización, plan, estatus, próximo vencimiento, monto
+  - Acciones: Registrar pago, Cambiar plan, Suspender, Ver historial
+  - Filtros: por estatus, por plan, por vencimiento próximo
+  - KPI cards: Orgs en trial / activas / vencidas / suspendidas
+
+- [ ] **10.5.4 — TRI-76** Panel Org Admin — Mi suscripción
+  ```
+  GET /api/subscripcion/mi-subscripcion      → datos del plan, módulos activos, historial de pagos
+  ```
+  
+  Vista en `/dashboard/subscripcion` (solo `admin_org`):
+  - Card con plan actual, precio, fecha de vencimiento, días en trial
+  - Lista de módulos activos con check / gris según plan
+  - Historial de pagos (fecha, concepto, monto, estatus)
+  - Botón "Solicitar cambio de plan" → genera un email a soporte Trinium
+  - Banner de alerta si `trial_termina_at < NOW() + 3 días`
+
+- [ ] **10.5.5 — TRI-77** Banner de suscripción vencida / trial
+  ```typescript
+  // src/components/SubscripcionBanner.tsx — componente global en el layout del dashboard
+  // Lee el header X-Subscription-Status que inyecta el middleware
+  // Casos:
+  // trial con < 3 días: ⚠️ "Tu prueba vence en X días. Contacta a soporte para activar tu plan."
+  // vencida: 🔴 "Tu suscripción venció. Algunas funciones están deshabilitadas."
+  // suspendida: 🚫 "Cuenta suspendida. Contacta soporte."
+  ```
+
+- [ ] **10.5.6 — TRI-78** Calculadora de costos aproximados
+
+  **¿Es factible?** Sí, completamente. Es un componente React estático que lee los datos de planes y módulos.
+
+  Página pública en `/precios` (no requiere login):
+  ```typescript
+  // src/app/precios/page.tsx — Server Component que carga planes y módulos desde DB
+  
+  // Lógica del calculador:
+  // 1. Usuario elige tipo de organización (Doctor, Clínica, Hospital, Laboratorio, Personalizado)
+  //    → carga el plan sugerido automáticamente
+  // 2. Toggle de cada módulo extra (on/off)
+  //    → si módulo ya incluido en plan → sin costo extra
+  //    → si módulo adicional → suma precio_adicional del módulo
+  // 3. Toggle mensual / anual
+  //    → anual = 10 meses de precio (2 meses gratis, ~17% descuento)
+  // 4. Muestra desglose:
+  //    Plan base: $X/mes
+  //    + Módulo extra 1: $Y/mes
+  //    + Módulo extra 2: $Z/mes
+  //    ──────────────────
+  //    Total mensual: $W/mes
+  //    Total anual:   $V/año (ahorras $savings)
+  // 5. Botón "Empezar prueba gratuita de 7 días" → formulario de registro
+  
+  // Nota: el calculador es solo orientativo. El precio final puede variar
+  // en planes Enterprise según negociación.
+  ```
+  
+  Componentes:
+  - `<SelectorPlan />` — cards de planes con el sugerido pre-seleccionado
+  - `<ToggleModulos />` — lista de módulos con precio y toggle on/off
+  - `<CicloFacturacion />` — switch mensual / anual con ahorro destacado
+  - `<ResumenCosto />` — desglose en tiempo real con animación al cambiar
+  - `<BotonIniciarPrueba />` → navega al formulario de registro o contacto
+
+- [ ] **10.5.7 — TRI-79** Flujo de alta con trial automático
+  ```typescript
+  // Al crear nueva organización desde /trinium-admin/organizaciones/nueva:
+  // 1. POST /api/trinium/organizaciones/crear → crea org + usuario admin_org
+  // 2. Automáticamente llama crearTrialSubscripcion(orgId, planClave)
+  //    → subscripcion.estatus = 'trial'
+  //    → trial_inicia_at = NOW()
+  //    → trial_termina_at = NOW() + 7 days (configurable como env var TRIAL_DAYS)
+  // 3. Email de bienvenida (Resend) incluye:
+  //    - Nombre del plan en prueba
+  //    - Módulos incluidos
+  //    - Fecha de vencimiento del trial
+  //    - Link a /dashboard/subscripcion para ver detalles
+  //    - Contacto de soporte para activar plan pagado
+  ```
+
+#### Decisiones de diseño
+
+- **Pagos manuales en v1.** No hay integración con Stripe/Conekta en el MVP. El super admin de Trinium registra los pagos manualmente después de confirmar transferencia o depósito. Stripe se planea para v2.
+- **Trial de 7 días.** Configurable via `TRIAL_DAYS` en variables de entorno. Por defecto 7.
+- **Sin descuento automático en cambio de plan.** Si el cliente cambia de plan a mitad del ciclo, se aplica en el siguiente ciclo. Sin prórrateos en v1.
+- **Enterprise siempre manual.** Los planes Enterprise (`es_personalizado = true`) tienen `precio_mensual = 0` en DB. El precio real se negocia y se ingresa en `subscripciones.precio_acordado`.
+- **Módulos vs. acceso al catálogo de medicamentos.** El catálogo global de medicamentos (`medicamentos`) es de solo lectura para todos los tenants, independientemente del plan. El módulo `farmacia` habilita el inventario propio, recetas y resurtimiento.
+
+---
+
 ## Riesgos y decisiones críticas
 
 ### Riesgo 1 — El cambio de modelo de paciente es la migración más arriesgada

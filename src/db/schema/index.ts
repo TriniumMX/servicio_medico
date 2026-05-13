@@ -3,6 +3,9 @@ export * from './organizaciones';
 export * from './usuarios';
 export * from './pacientes';
 
+// ─── Suscripciones y pagos ────────────────────────────────────────────────────
+export * from './subscripciones';  // modulos, planes, planes_modulos, subscripciones, subscripciones_modulos, pagos
+
 // ─── Catálogos globales ───────────────────────────────────────────────────────
 export * from './farmacia';          // unidades_medida, medicamentos, inventario_medicamentos
 export * from './laboratorio';       // laboratorio_estudios, laboratorio_ordenes, laboratorio_orden_estudios
