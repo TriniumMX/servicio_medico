@@ -1,0 +1,84 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# logs directory (Winston logs)
+/logs
+*.log
+*.log.gz
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# public folder
+/public
+
+database/migration_postgres_catalogos.sql
+database/insert_initial_data.sql
+database/setup_completo_postgres.sql
+fix_sexo_beneficiarios.sql
+insert_especialidades.sql
+insert_especialidades_corrected.sql
+insert_parentesco.sql
+insert_tiposusuarios.sql
+database/ALTER_proveedores_add_hospital.sql
+database/ALTER_signos_vitales.sql
+database/CREATE_folio_consulta.sql
+database/CREATE_hospitales.sql
+database/CREATE_TABLE_signos_vitales.sql
+database/MIGRATE_signos_vitales.sql
+database/README_signos_vitales.md
+hash-password.js
+database/ALTER_TABLE_recetas_resurtimiento.sql
+database/ALTER_TABLE_surtimientos_cantidad_cero.sql
+database/CREATE_TABLE_reglas_generales.sql
+INSTRUCCIONES_SISTEMA_RECETAS.md
+INSTRUCCIONES_SISTEMA_RECETAS.md
+RESUMEN_FIX_RESURTIMIENTO.md
+INSTRUCCIONES_SISTEMA_RECETAS.md
+INSTRUCCIONES_SISTEMA_RECETAS.md
+api_response.json
+.claude/settings.local.json
+.claude/settings.local.json
+.claude/settings.local.json
+database/ALTER_TABLE_beneficiarios_add_contacto.sql
+database/CREATE_TABLE_firmas_digitales.sql
+database/CREATE_TABLE_referencias_especialidad.sql
+PLAN_REFERENCIAS_ESPECIALIDAD.md
+.claude/settings.local.json
+PLAN_REFERENCIAS_ACTUALIZADO.md
