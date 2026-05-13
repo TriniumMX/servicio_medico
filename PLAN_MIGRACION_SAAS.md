@@ -838,6 +838,132 @@ Actualmente estas tablas NO tienen `tenant_id`. Todas deben recibirlo:
 
 ---
 
+### FASE 13 — App Móvil del Paciente ✦ Plus opcional (Post-SaaS)
+
+> **Funcionalidad plus, no parte del flujo core del SaaS.**
+> Se implementa solo si se decide ofrecerla como valor agregado al finalizar y estabilizar las Fases 1–12.
+> No bloquea ni es prerequisito de ninguna fase anterior.
+
+**Stack tentativo (si se implementa):** React Native (Expo) · JWT `tipo: 'paciente'` ya existente en Fase 11 · QR dinámico firmado
+**Estimado:** A decidir y planear al concluir el SaaS
+**Base existente:** La Fase 11 (Portal del Paciente web) ya incluye auth separado para pacientes; la app móvil sería una extensión de ese mismo sistema.
+
+---
+
+#### Qué es y para qué sirve
+
+Una app móvil que el paciente descarga voluntariamente. La app le permite:
+- Ver su historial médico (consultas, recetas, diagnósticos, certificados)
+- **Plus:** compartir su expediente con un médico nuevo mediante un QR temporal
+
+El flujo SaaS base (Fases 1–12) funciona perfectamente sin esta app. El médico sigue registrando pacientes manualmente. La app es una comodidad para el paciente, no un requisito operativo.
+
+---
+
+#### Funcionalidades plus (a elegir cuáles implementar)
+
+##### Plus 1 — Historial en el celular
+
+El paciente accede a la misma información que ya existe en el Portal web (Fase 11), pero desde una app nativa. No requiere cambios de arquitectura: usa los mismos endpoints del Portal.
+
+##### Plus 2 — QR para compartir expediente con un médico nuevo
+
+```
+1. Paciente llega con un doctor que aún no lo tiene registrado
+2. Paciente abre la app y genera un QR temporal (expira en 15 minutos)
+3. QR contiene: { id_paciente, token_firmado, exp }
+4. Doctor escanea el QR desde el dashboard web del SaaS
+5. El sistema valida el token y muestra el perfil del paciente
+6. Doctor puede:
+   a. Registrarlo en su propio expediente con un clic (en lugar de capturar datos manualmente)
+   b. Ver el historial de consultas anteriores (solo lo que el paciente autorizó compartir)
+7. El paciente recibe notificación: "Dr. [nombre] accedió a tu expediente"
+```
+
+> Sin la app el flujo sigue funcionando: el doctor busca al paciente por nombre o CURP y lo registra de forma normal. El QR es solo una comodidad.
+
+##### Plus 3 — Control de privacidad del paciente
+
+El paciente decide qué información es visible para médicos nuevos al escanear el QR:
+- Todas las consultas
+- Solo diagnósticos (sin notas SOAP)
+- Solo medicamentos activos
+- Solo datos de contacto (sin historial)
+
+---
+
+#### Decisión arquitectural: ¿una sola tabla de pacientes o separada por tenant?
+
+Esta pregunta aplica si se decide implementar el QR (Plus 2). Es la decisión más importante de la Fase 13.
+
+##### Opción A — Paciente por tenant (modelo actual del SaaS, Fases 1–12)
+
+```
+pacientes
+├── tenant_id  ← el paciente "pertenece" a la org donde fue registrado
+├── curp, nombre, ...
+```
+
+El mismo paciente en dos hospitales = dos registros distintos. La app móvil tendría que unir esos registros por CURP o email para mostrar un historial unificado.
+
+**Cuándo elegir esta:** si el QR solo va a permitir que el médico vea datos básicos del paciente y lo registre rápido en su expediente. El historial de otros hospitales no se comparte.
+
+##### Opción B — Paciente como identidad global (requiere migración de schema)
+
+```
+pacientes_globales              ← sin tenant_id, identidad única en todo el sistema
+├── id, curp UNIQUE, nombre, email, app_activada
+
+expedientes                     ← relación paciente ↔ médico/hospital
+├── id_paciente (FK pacientes_globales)
+├── tenant_id, id_medico
+```
+
+El mismo paciente en dos hospitales = un solo registro, dos expedientes. La app muestra historial de todos los hospitales en un solo lugar.
+
+**Cuándo elegir esta:** si se quiere que el médico nuevo pueda ver el historial completo del paciente de otros hospitales al escanear el QR.
+
+**Implicación:** requiere migrar la tabla `pacientes` de la Fase 1. No es una reescritura, pero sí una migración de schema con datos reales en producción. Se planea detalladamente antes de ejecutar.
+
+##### Recomendación
+
+Las Fases 1–12 se implementan con Opción A (ya planeada). Al decidir arrancar la Fase 13, se elige entre A o B según el alcance del plus que se quiera ofrecer. Para dejar la puerta abierta, en la Fase 3 conviene guardar `curp` como campo indexado, lo que facilita deduplicar pacientes más adelante si se elige Opción B.
+
+---
+
+#### Endpoints nuevos (solo si se implementa)
+
+```
+# Plus 2 — QR
+POST /api/portal/qr/generar                    → genera token QR temporal (15 min)
+GET  /api/pacientes/qr/[token]                 → médico escanea y obtiene perfil del paciente
+POST /api/pacientes/qr/vincular                → médico registra al paciente en su expediente vía QR
+
+# Plus 3 — Privacidad
+GET  /api/portal/privacidad                    → configuración de visibilidad del historial
+PUT  /api/portal/privacidad                    → actualizar preferencias
+GET  /api/portal/medicos-con-acceso            → lista de médicos con acceso activo
+DELETE /api/portal/medicos-con-acceso/[id]     → revocar acceso a un médico
+
+# Push notifications (app nativa)
+POST /api/portal/notificaciones/push           → enviar notificación al paciente
+```
+
+---
+
+#### Consideraciones legales (a planear antes del lanzamiento)
+
+Puntos a resolver con área legal/compliance antes de publicar la app:
+- Consentimiento informado del paciente para compartir historial clínico
+- Derecho al olvido y retención de datos (LFPDPPP México)
+- Responsabilidad del médico al acceder a expediente via QR
+- Tokens QR de un solo uso o con expiración corta (recomendado: 15 min, no renovable automáticamente)
+- Registro de auditoría: cada acceso via QR queda logueado con timestamp, médico y acción
+
+> Los términos y condiciones se planearán en una sesión separada con el equipo legal al concluir el SaaS.
+
+---
+
 ## Riesgos y decisiones críticas
 
 ### Riesgo 1 — El cambio de modelo de paciente es la migración más arriesgada
@@ -893,7 +1019,7 @@ Fase 1 (DB + Supabase) ───────────────────
     │       │       │       ├─► Fase 6 (Referencias)                │
     │       │       │       └─► Fase 7 (Certificados) ─────────────►┤
     │       │       │                                                │
-    │       │       └─► Fase 11 (Portal Paciente)                   │
+    │       │       └─► Fase 11 (Portal Paciente) ──────────────────┤
     │       │                                                        │
     │       └─► Fase 10 (Super Admin)                               │
     │                                                                │
@@ -901,6 +1027,12 @@ Fase 1 (DB + Supabase) ───────────────────
     └─► Fase 9 (PDFs + Email)                                       │
                                                                      │
                         Fase 12 (QA + Deploy) ◄────────────────────┘
+                                │
+                                │  ← SaaS en producción estable
+                                ▼
+                   Fase 13 (App Móvil Paciente) [POST-SaaS]
+                   Depende de: Fase 11 (auth paciente) + Fase 3 (modelo paciente)
+                   Decisión previa: Opción A vs Opción B de identidad del paciente
 ```
 
 ---
