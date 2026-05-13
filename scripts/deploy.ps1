@@ -12,11 +12,11 @@ if (Test-Path ".git") {
 
 # 2. Instalar dependencias
 Write-Host ">>> Verificando dependencias..."
-npm install
+pnpm install
 
 # 3. Build (Esto borra .next y lo crea de nuevo)
-Write-Host ">>> Construyendo aplicacion (npm run build)..."
-npm run build
+Write-Host ">>> Construyendo aplicacion (pnpm build)..."
+pnpm build
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ">>> Error en el build. Cancelando." -ForegroundColor Red

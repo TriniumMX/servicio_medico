@@ -9,7 +9,7 @@ import { Eye, EyeOff, Lock, User, AlertCircle, Sparkles } from 'lucide-react';
 import Loader from '@/components/Loader';
 
 export default function LoginPage() {
-  const [usuario, setUsuario] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -38,15 +38,12 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ usuario, password }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (res.ok) {
         const data = await res.json();
-
-        // --- CORRECCIÓN AQUÍ ---
-        // Pasamos los permisos que vienen de la API al contexto
-        login(data.user, data.permissions);
+        login(data.user);
 
         router.push('/dashboard');
       } else {
@@ -236,14 +233,14 @@ export default function LoginPage() {
 
           {/* Form - Premium Inputs */}
           <form onSubmit={handleSubmit} className="px-10 pb-8 space-y-6">
-            {/* Usuario Input */}
+            {/* Email Input */}
             <div className="group opacity-0 animate-fade-in delay-300">
               <label
-                htmlFor="usuario"
+                htmlFor="email"
                 className={`block text-sm font-bold mb-3 transition-all duration-300 ${isDark ? 'text-slate-300' : 'text-gray-600'
                   }`}
               >
-                Usuario
+                Correo electrónico
               </label>
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none z-10">
@@ -251,16 +248,16 @@ export default function LoginPage() {
                     }`} />
                 </div>
                 <input
-                  id="usuario"
-                  type="text"
-                  value={usuario}
-                  onChange={(e) => setUsuario(e.target.value)}
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                   className={`w-full pl-12 pr-5 py-3.5 rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:scale-[1.01] ${isDark
                     ? 'bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:bg-white/10 focus:border-[#009EF0]/50 focus:ring-[#009EF0]/30 shadow-lg shadow-black/10'
                     : 'bg-white border border-[#009EF0]/15 text-gray-700 placeholder-gray-400 focus:bg-white focus:border-[#009EF0]/40 focus:ring-[#009EF0]/20 shadow-sm shadow-[#009EF0]/5'
                     }`}
-                  placeholder="Ingrese su usuario"
+                  placeholder="correo@ejemplo.com"
                 />
               </div>
             </div>

@@ -1,36 +1,42 @@
-// src/context/AuthContext.tsx
-
 'use client';
 
 import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback } from 'react';
+import type { RoleUsuario } from '@/db/schema/usuarios';
 
-interface User {
-  id_usuario: number;
+export interface User {
+  id: string;
+  email: string;
   nombre: string;
-  username: string;
-  id_tipousuario: number;
-  firma_digital?: string; // Base64 image
-  id_hospital?: number | null;
-  nombre_hospital?: string | null;
+  apellidoPaterno?: string | null;
+  role: RoleUsuario;
+  tenant_id: string;
+  nombre_organizacion: string;
+  colorPrimario?: string | null;
+  colorSecundario?: string | null;
+  logoUrl?: string | null;
 }
+
+const ADMIN_ROLES: RoleUsuario[] = ['super_admin', 'admin_org'];
 
 interface AuthContextType {
   user: User | null;
-  permissions: string[];
   isAuthenticated: boolean;
-  login: (user: User, permissions: string[]) => void;
+  login: (user: User) => void;
   logout: () => void;
   loading: boolean;
+  isAdmin: () => boolean;
+  isSuperAdmin: () => boolean;
+  hasRole: (role: RoleUsuario) => boolean;
+  // Migration shim: returns true for all authenticated users.
+  // Replace with role-based checks in Phase 3+.
   hasPermission: (action?: string) => boolean;
-  updateFirmaDigital: (firma: string) => void;
+  permissions: string[];
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  // Inicializamos siempre como array vacío []
-  const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,16 +46,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
-          // CORRECCIÓN: Aseguramos que siempre sea un array, si viene null/undefined ponemos []
-          setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
         } else {
           setUser(null);
-          setPermissions([]);
         }
-      } catch (error) {
-        console.error('Error al verificar la sesión:', error);
+      } catch {
         setUser(null);
-        setPermissions([]);
       } finally {
         setLoading(false);
       }
@@ -57,61 +58,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     fetchUser();
   }, []);
 
-  const login = (userData: User, userPermissions: string[]) => {
-    setLoading(true);
+  const login = (userData: User) => {
     setUser(userData);
-    // CORRECCIÓN: Aseguramos que no entre undefined
-    setPermissions(Array.isArray(userPermissions) ? userPermissions : []);
-    setLoading(false);
   };
 
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-    } catch (error) {
-      console.error('Error durante el logout:', error);
+    } catch {
+      // ignore
     } finally {
       setUser(null);
-      setPermissions([]);
     }
   };
 
-  const updateFirmaDigital = (firma: string) => {
-    if (user) {
-      setUser({ ...user, firma_digital: firma });
-    }
-  };
+  const isAdmin = useCallback(() =>
+    !!user && ADMIN_ROLES.includes(user.role), [user]);
 
-  // --- AQUÍ ESTABA EL ERROR ---
-  const hasPermission = useCallback((action?: string) => {
-    // 1. Si no requiere acción, pase.
-    if (!action) return true;
+  const isSuperAdmin = useCallback(() =>
+    !!user && user.role === 'super_admin', [user]);
 
-    // 2. Si no hay usuario, bloqueado.
-    if (!user) return false;
+  const hasRole = useCallback((role: RoleUsuario) =>
+    !!user && user.role === role, [user]);
 
-    // 3. CORRECCIÓN: Verificamos que permissions exista y sea un array antes de usar .includes
-
-    if (user.id_tipousuario === 6) {
-      return true;
-    }
-
-    if (!Array.isArray(permissions)) return false;
-
-    return permissions.includes(action);
-  }, [user, permissions]);
+  // Shim: any authenticated user passes. Tighten per-role in Phase 3+.
+  const hasPermission = useCallback((_action?: string) => !!user, [user]);
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        permissions, // Exportamos permissions por si acaso
         isAuthenticated: !!user,
         login,
         logout,
         loading,
+        isAdmin,
+        isSuperAdmin,
+        hasRole,
         hasPermission,
-        updateFirmaDigital
+        permissions: [],
       }}
     >
       {children}

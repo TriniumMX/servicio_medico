@@ -1,73 +1,57 @@
-// src/app/api/auth/me/route.ts
-
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { jwtVerify } from 'jose';
-// IMPORTANTE: Agregamos executeQuery para traer la lista de permisos
-import { executeQueryOne, executeQuery } from '@/lib/dbPostgres';
-
-interface JwtPayload {
-  id: number;
-  usuario: string;
-  tipoUsuario: number;
-}
+import { db } from '@/db';
+import { usuarios, organizaciones } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { getTenantFromRequest } from '@/lib/auth-helpers';
 
 export async function GET(request: NextRequest) {
   try {
-    const token = request.cookies.get('token')?.value;
-
-    if (!token) {
-      return NextResponse.json({ message: 'No autorizado: Token no proporcionado.' }, { status: 401 });
+    const jwt = await getTenantFromRequest(request);
+    if (!jwt) {
+      return NextResponse.json({ message: 'No autorizado.' }, { status: 401 });
     }
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET);
-    const { payload } = await jwtVerify(token, secret) as { payload: JwtPayload };
+    const [row] = await db
+      .select({
+        id: usuarios.id,
+        email: usuarios.email,
+        nombre: usuarios.nombre,
+        apellidoPaterno: usuarios.apellidoPaterno,
+        role: usuarios.role,
+        activo: usuarios.activo,
+        tenantId: usuarios.tenantId,
+        nombreOrganizacion: organizaciones.nombre,
+        colorPrimario: organizaciones.colorPrimario,
+        colorSecundario: organizaciones.colorSecundario,
+        logoUrl: organizaciones.logoUrl,
+      })
+      .from(usuarios)
+      .innerJoin(organizaciones, eq(usuarios.tenantId, organizaciones.id))
+      .where(eq(usuarios.id, jwt.id))
+      .limit(1);
 
-    // 1. Obtener datos del Usuario
-    const user = await executeQueryOne<{
-      id_usuario: number;
-      nombre: string;
-      username: string;
-      id_tipousuario: number;
-      firma_digital?: string;
-      id_hospital?: number | null;
-      nombre_hospital?: string | null;
-    }>(`
-      SELECT
-        u.id_usuario,
-        u.nombre,
-        u.username,
-        u.id_tipousuario,
-        u.firma_digital,
-        u.id_hospital,
-        h.nombre_hospital
-      FROM usuarios u
-      LEFT JOIN hospitales h ON u.id_hospital = h.id_hospital
-      WHERE u.id_usuario = $1
-    `, [payload.id]);
-
-    if (!user) {
+    if (!row || !row.activo) {
       return NextResponse.json({ message: 'Usuario no encontrado.' }, { status: 404 });
     }
 
-    // 2. NUEVO: Obtener Permisos (Acciones) del Usuario
-    // Hacemos un JOIN para obtener las claves (ej: 'VER_DASHBOARD')
-    const acciones_db = await executeQuery<{ clave: string }>(`
-      SELECT c.clave
-      FROM usuario_acciones ua
-      INNER JOIN cat_acciones c ON ua.id_accion = c.id_accion
-      WHERE ua.id_usuario = $1 AND c.activo = true
-    `, [payload.id]);
-
-    // Convertimos el resultado [{clave: 'A'}, {clave: 'B'}] a un array simple ['A', 'B']
-    const permissions = acciones_db.map(a => a.clave);
-
-    // 3. Retornar Usuario + Permisos
-    // Esto permite que el AuthContext restaure el menú correcto al recargar la página
-    return NextResponse.json({ user, permissions }, { status: 200 });
+    return NextResponse.json({
+      user: {
+        id: row.id,
+        email: row.email,
+        nombre: row.nombre,
+        apellidoPaterno: row.apellidoPaterno,
+        role: row.role,
+        tenant_id: row.tenantId,
+        nombre_organizacion: row.nombreOrganizacion,
+        colorPrimario: row.colorPrimario,
+        colorSecundario: row.colorSecundario,
+        logoUrl: row.logoUrl,
+      },
+    });
 
   } catch (error) {
     console.error('Error al obtener datos del usuario:', error);
-    return NextResponse.json({ message: 'No autorizado: Token inválido.' }, { status: 401 });
+    return NextResponse.json({ message: 'No autorizado.' }, { status: 401 });
   }
 }
